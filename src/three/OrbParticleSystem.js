@@ -72,6 +72,7 @@ export class OrbParticleSystem {
       uniforms: {
         uTime: { value: 0 },
         uFormProgress: { value: 0 },
+        uBlast: { value: 0 },
         uCoreColor: { value: coreColor },
         uRimColor: { value: rimColor },
         uSecondaryColor: { value: secondaryColor },
@@ -99,6 +100,7 @@ export class OrbParticleSystem {
     this._launching = false;
     this.points.visible = true;
     this.material.uniforms.uFormProgress.value = 0;
+    this.material.uniforms.uBlast.value = 0;
     this.material.uniforms.uAlphaScale.value = 1.0;
   }
 
@@ -141,31 +143,36 @@ export class OrbParticleSystem {
     }
   }
 
-  // Called instead of fadeOut when the gesture is released after the orb is stable.
-  // The orb rushes toward the camera (z -> 0.82), growing huge via perspective, then vanishes.
+  // Called when gesture is released and the orb was substantially formed.
+  // Two things happen simultaneously:
+  //   1. uBlast: shader scales each particle outward from the orb's local center
+  //   2. points.position.z rushes toward the camera so perspective also blows it up
+  // Together these make the orb cover the whole screen before vanishing.
   launchRelease() {
     this._launching = true;
     this._launchProgress = 0;
     this._launchDuration = 0.55;
     this._launchStartZ = this.points.position.z;
-    this._launchTargetZ = 0.82; // just in front of camera at z=1; perspective makes it fill screen
+    this._launchTargetZ = 0.82;
     this._fading = false;
   }
 
   updateLaunch(deltaTime) {
     if (!this._launching) return;
     this._launchProgress = Math.min(1, this._launchProgress + deltaTime / this._launchDuration);
-    // Ease-in so it starts slow then blasts forward.
-    const ease = this._launchProgress * this._launchProgress;
+    const ease = this._launchProgress * this._launchProgress; // ease-in: slow start, fast finish
+    // Rush toward camera
     this.points.position.z = this._launchStartZ + (this._launchTargetZ - this._launchStartZ) * ease;
-    // Fade out so it dissolves as it expands across the screen.
+    // Shader-side expansion: particles also fly outward from orb center
+    this.material.uniforms.uBlast.value = ease;
+    // Alpha fades so it dissolves before clipping into camera
     this.material.uniforms.uAlphaScale.value = 1.0 - this._launchProgress;
     if (this._launchProgress >= 1) {
       this._launching = false;
       this.isAlive = false;
       this.points.visible = false;
-      // Reset z for next spawn.
       this.points.position.z = 0;
+      this.material.uniforms.uBlast.value = 0;
       this.material.uniforms.uAlphaScale.value = 1.0;
     }
   }

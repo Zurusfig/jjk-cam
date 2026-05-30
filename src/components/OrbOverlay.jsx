@@ -113,11 +113,10 @@ export function OrbOverlay({ gesture, landmarks, headPoint }) {
       // Retire orbs that are no longer the active gesture.
       for (const [id, orb] of Object.entries(orbSystems)) {
         if (id !== orbGesture && orb.isAlive && !orb._fading && !orb._launching) {
-          if (orb.formProgress >= 0.95) {
-            // Orb was stable when the gesture was released: shoot it toward the camera.
-            orb.launchRelease();
+          if (orb.formProgress >= 0.8) {
+            orb.launchRelease(); // stable — blast toward camera
           } else {
-            orb.fadeOut(0.5);
+            orb.fadeOut(0.4);   // still forming — dissolve quietly
           }
         }
         if (orb._fading) orb.updateFade(dt);
