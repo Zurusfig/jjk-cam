@@ -31,8 +31,8 @@ function getOrbSourcePoint(gestureId, landmarks, headPoint) {
       // Forehead/above-head via FaceLandmarker. Fall back to above wrist.
       return headPoint ?? { x: lm[0].x, y: lm[0].y - handH * 2.0, z: lm[0].z };
     case 'GOJO_RED':
-      // Slightly above index fingertip.
-      return { x: lm[8].x, y: lm[8].y - handH * 0.4, z: lm[8].z };
+      // Well above the index fingertip (user asked for higher spawn).
+      return { x: lm[8].x, y: lm[8].y - handH * 1.4, z: lm[8].z };
     case 'GOJO_BLUE': {
       if (landmarks.length < 2) return lm[9];
       const lm2 = landmarks[1];

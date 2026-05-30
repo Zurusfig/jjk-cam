@@ -42,8 +42,9 @@ function classifyStatic(lm, thumbIndexDistNorm) {
   const ext = extendedFlags(lm);
   const T = ext[0], I = ext[1], M = ext[2], R = ext[3], P = ext[4];
 
-  // HOLLOW_PURPLE: all four fingers (IMRP) extended, thumb optional.
-  if (I && M && R && P) return 'HOLLOW_PURPLE';
+  // HOLLOW_PURPLE: all four fingers (IMRP) extended AND thumb held low/inward
+  // (thumb-index dist < 0.35) so a casual open hand doesn't accidentally trigger.
+  if (I && M && R && P && thumbIndexDistNorm < 0.35) return 'HOLLOW_PURPLE';
 
   // INFINITE_VOID: peace/scissors sign — I+M extended, R+P curled,
   // thumb-index gap 0.45-0.80 (the open V shape).

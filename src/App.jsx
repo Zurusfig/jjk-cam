@@ -52,7 +52,7 @@ function DebugPanel({ visible, gesture, headPoint, debug }) {
             label="thumb·index"
             value={debug.thumbIndexDist.toFixed(2)}
             ok={debug.thumbIndexDist < 0.35}
-            hint="<.35 Void"
+            hint="<.35 Purple/Void"
           />
           <Metric
             label="index horiz"
@@ -81,7 +81,7 @@ export default function App() {
   const videoRef = useRef(null);
   const [videoReady, setVideoReady] = useState(false);
   const [debugVisible, setDebugVisible] = useState(true);
-  const [landmarksVisible, setLandmarksVisible] = useState(true);
+  const [landmarksVisible, setLandmarksVisible] = useState(false);
 
   const { landmarks } = useHandTracking(videoRef);
   const headPoint = useFaceTracking(videoRef, videoReady);

@@ -11,8 +11,9 @@ void main() {
   alpha = alpha * alpha; // quadratic falloff for a softer glow edge
   alpha *= vAlpha;
 
-  // Tiny white hotspot at the sprite center boosts the emissive "light" feel.
-  vec3 col = vColor + vec3(pow(1.0 - dist * 2.0, 6.0)) * 0.6;
+  // Very subtle brightness boost at sprite center — just enough to feel like
+  // light emission without washing the color out to white.
+  vec3 col = vColor + vColor * pow(1.0 - dist * 2.0, 5.0) * 0.35;
 
   gl_FragColor = vec4(col, alpha);
 }

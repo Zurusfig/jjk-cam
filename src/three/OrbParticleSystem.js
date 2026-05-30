@@ -102,6 +102,7 @@ export class OrbParticleSystem {
     this.material.uniforms.uFormProgress.value = 0;
     this.material.uniforms.uBlast.value = 0;
     this.material.uniforms.uAlphaScale.value = 1.0;
+    this.points.scale.setScalar(1);
   }
 
   update(deltaTime, time, worldPos) {
@@ -144,35 +145,31 @@ export class OrbParticleSystem {
   }
 
   // Called when gesture is released and the orb was substantially formed.
-  // Two things happen simultaneously:
-  //   1. uBlast: shader scales each particle outward from the orb's local center
-  //   2. points.position.z rushes toward the camera so perspective also blows it up
-  // Together these make the orb cover the whole screen before vanishing.
+  // Scales the whole orb object up 1 -> ~40x over 0.6s (ease-in so it starts
+  // slow then snaps outward), giving the illusion of the sphere rushing at the
+  // camera until it fills and covers the screen.  No z-movement needed.
   launchRelease() {
     this._launching = true;
     this._launchProgress = 0;
-    this._launchDuration = 0.55;
-    this._launchStartZ = this.points.position.z;
-    this._launchTargetZ = 0.82;
+    this._launchDuration = 0.6;
     this._fading = false;
+    this.points.scale.setScalar(1);
   }
 
   updateLaunch(deltaTime) {
     if (!this._launching) return;
     this._launchProgress = Math.min(1, this._launchProgress + deltaTime / this._launchDuration);
-    const ease = this._launchProgress * this._launchProgress; // ease-in: slow start, fast finish
-    // Rush toward camera
-    this.points.position.z = this._launchStartZ + (this._launchTargetZ - this._launchStartZ) * ease;
-    // Shader-side expansion: particles also fly outward from orb center
-    this.material.uniforms.uBlast.value = ease;
-    // Alpha fades so it dissolves before clipping into camera
+    // Cubic ease-in: barely moves at start, explodes at the end.
+    const ease = this._launchProgress * this._launchProgress * this._launchProgress;
+    // Scale to ~40x at peak — enough to fill even a wide viewport.
+    this.points.scale.setScalar(1 + ease * 39);
+    // Fade alpha in sync so the edge dissolves as it fills the screen.
     this.material.uniforms.uAlphaScale.value = 1.0 - this._launchProgress;
     if (this._launchProgress >= 1) {
       this._launching = false;
       this.isAlive = false;
       this.points.visible = false;
-      this.points.position.z = 0;
-      this.material.uniforms.uBlast.value = 0;
+      this.points.scale.setScalar(1);
       this.material.uniforms.uAlphaScale.value = 1.0;
     }
   }

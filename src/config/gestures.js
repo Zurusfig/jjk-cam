@@ -1,10 +1,8 @@
-const WHITE = '#FFFFFF';
-
 export const GESTURES = {
   YUTA_VIOLET: {
     id: 'YUTA_VIOLET',
     label: 'Yuta Violet',
-    coreColor: WHITE,
+    coreColor: '#FFB3FF', // bright pink-violet highlight (not white)
     color: '#F358F3',
     secondaryColor: null,
     particleCount: 5500,
@@ -17,7 +15,7 @@ export const GESTURES = {
   RYU_CYAN: {
     id: 'RYU_CYAN',
     label: 'Ryu Cyan',
-    coreColor: WHITE,
+    coreColor: '#DAFFF9', // very light cyan highlight
     color: '#97F4EB',
     secondaryColor: null,
     particleCount: 5000,
@@ -30,7 +28,7 @@ export const GESTURES = {
   GOJO_RED: {
     id: 'GOJO_RED',
     label: 'Gojo Red',
-    coreColor: WHITE,
+    coreColor: '#FF8888', // bright warm-red highlight
     color: '#FD093F',
     secondaryColor: '#8B0000',
     particleCount: 7000,
@@ -43,7 +41,7 @@ export const GESTURES = {
   GOJO_BLUE: {
     id: 'GOJO_BLUE',
     label: 'Gojo Blue',
-    coreColor: WHITE,
+    coreColor: '#A0F8FF', // bright cyan-blue highlight
     color: '#03CEDB',
     secondaryColor: '#0018A8',
     particleCount: 7000,
@@ -56,7 +54,7 @@ export const GESTURES = {
   HOLLOW_PURPLE: {
     id: 'HOLLOW_PURPLE',
     label: 'Hollow Purple',
-    coreColor: WHITE,
+    coreColor: '#E080FF', // bright saturated purple highlight
     color: '#A844CC',
     secondaryColor: '#03CEDB',
     particleCount: 9000,

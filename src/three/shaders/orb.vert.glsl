@@ -99,7 +99,9 @@ void main() {
   gl_PointSize = baseSize * ease * sizeBoost * (300.0 / -mvPos.z);
   gl_PointSize = clamp(gl_PointSize, 1.0, 60.0);
 
-  // Color gradient: white core -> saturated rim -> secondary outer halo
+  // Color gradient: core highlight -> saturated rim -> secondary outer halo.
+  // uCoreColor is now the orb's own bright/saturated color (not white) so the
+  // center reads as an intense version of the rim color rather than washed out.
   float ct = smoothstep(uCoreRadius, uRimRadius, aRadial);
   vec3 col = mix(uCoreColor, uRimColor, ct);
   col = mix(col, uSecondaryColor, smoothstep(0.7, 1.0, aRadial));
