@@ -1,8 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { WebcamCapture } from './components/WebcamCapture';
 import { OrbOverlay } from './components/OrbOverlay';
+import { VoidOverlay } from './components/VoidOverlay';
 import { DebugLandmarks } from './components/DebugLandmarks';
 import { useHandTracking } from './hooks/useHandTracking';
+import { useFaceTracking } from './hooks/useFaceTracking';
 import { useGestureClassifier } from './hooks/useGestureClassifier';
 
 function DebugPanel({ visible, gesture, landmarks }) {
@@ -30,8 +32,9 @@ export default function App() {
   const [debugVisible, setDebugVisible] = useState(true);
   const [landmarksVisible, setLandmarksVisible] = useState(true);
 
-  const { landmarks, handedness } = useHandTracking(videoRef);
-  const gesture = useGestureClassifier(landmarks, handedness);
+  const { landmarks } = useHandTracking(videoRef);
+  const headPoint = useFaceTracking(videoRef, videoReady);
+  const gesture = useGestureClassifier(landmarks);
 
   const handleVideoReady = useCallback((v) => {
     videoRef.current = v;
@@ -56,7 +59,8 @@ export default function App() {
       <WebcamCapture onVideoReady={handleVideoReady} />
       {videoReady && (
         <>
-          <OrbOverlay gesture={gesture} landmarks={landmarks} />
+          <VoidOverlay active={gesture === 'INFINITE_VOID'} />
+          <OrbOverlay gesture={gesture} landmarks={landmarks} headPoint={headPoint} />
           <DebugLandmarks landmarks={landmarks} visible={landmarksVisible && debugVisible} />
           <DebugPanel visible={debugVisible} gesture={gesture} landmarks={landmarks} />
         </>

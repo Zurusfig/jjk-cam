@@ -29,7 +29,7 @@ export class OrbParticleSystem {
     const N = this.config.particleCount;
     const positions = new Float32Array(N * 3);
     const seeds = new Float32Array(N * 3);
-    const layers = new Float32Array(N);
+    const radials = new Float32Array(N);
     const phases = new Float32Array(N);
 
     for (let i = 0; i < N; i++) {
@@ -40,8 +40,10 @@ export class OrbParticleSystem {
       seeds[i * 3 + 1] = Math.sin(phi) * Math.sin(theta);
       seeds[i * 3 + 2] = Math.cos(phi);
 
-      // 30% core, 70% halo
-      layers[i] = Math.random() < 0.3 ? 0 : 1;
+      // Shell position [0..1]. Squaring biases particles toward the dense core
+      // so the white-hot center stacks bright under additive blending.
+      const u = Math.random();
+      radials[i] = u * u;
       phases[i] = Math.random() * Math.PI * 2;
 
       positions[i * 3] = seeds[i * 3];
@@ -52,18 +54,28 @@ export class OrbParticleSystem {
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     this.geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 3));
-    this.geometry.setAttribute('aLayer', new THREE.BufferAttribute(layers, 1));
+    this.geometry.setAttribute('aRadial', new THREE.BufferAttribute(radials, 1));
     this.geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
   }
 
   _buildMaterial() {
+    const coreColor = new THREE.Color(this.config.coreColor ?? '#FFFFFF');
+    const rimColor = new THREE.Color(this.config.color);
+    // Outer-halo tint: fall back to the rim color when no secondary is set.
+    const secondaryColor = new THREE.Color(this.config.secondaryColor ?? this.config.color);
+
     this.material = new THREE.ShaderMaterial({
       vertexShader: vertShader,
       fragmentShader: fragShader,
       uniforms: {
         uTime: { value: 0 },
         uFormProgress: { value: 0 },
-        uColor: { value: new THREE.Color(this.config.color) },
+        uCoreColor: { value: coreColor },
+        uRimColor: { value: rimColor },
+        uSecondaryColor: { value: secondaryColor },
+        uCoreRadius: { value: this.config.coreRadius ?? 0.22 },
+        uRimRadius: { value: this.config.rimRadius ?? 0.85 },
+        uColorVar: { value: this.config.colorVariation ?? 0.14 },
         uOrbRadius: { value: this.config.orbRadius },
         uBehavior: { value: this.behaviorInt },
       },

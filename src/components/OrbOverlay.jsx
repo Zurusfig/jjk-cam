@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbParticleSystem } from '../three/OrbParticleSystem';
+import { GESTURES } from '../config/gestures';
 
 // Convert normalized landmark coords (0-1) to Three.js world coords
 // Video is mirrored, so x is flipped
@@ -16,7 +17,7 @@ function landmarkToWorld(lm, camera) {
   return camera.position.clone().add(dir.multiplyScalar(dist));
 }
 
-function getOrbSourcePoint(gestureId, landmarks) {
+function getOrbSourcePoint(gestureId, landmarks, headPoint) {
   if (!landmarks || landmarks.length === 0) return null;
   const lm = landmarks[0];
 
@@ -29,23 +30,26 @@ function getOrbSourcePoint(gestureId, landmarks) {
         z: (lm[4].z + lm[8].z) / 2,
       };
     }
-    case 'RIKA_CYAN': return lm[8]; // index tip
-    case 'GOJO_RED': return lm[8]; // index tip
+    case 'RYU_CYAN':
+      // Spawns above the head (forehead point from face tracking). Fall back to
+      // a point well above the hand if the face isn't currently detected.
+      return headPoint ?? { x: lm[0].x, y: lm[0].y - 0.4, z: lm[0].z };
+    case 'GOJO_RED': return lm[4]; // thumb tip
     case 'GOJO_BLUE': {
-      if (landmarks.length < 2) return lm[0];
+      if (landmarks.length < 2) return lm[9];
       const lm2 = landmarks[1];
       return {
-        x: (lm[0].x + lm2[0].x) / 2,
-        y: (lm[0].y + lm2[0].y) / 2,
-        z: (lm[0].z + lm2[0].z) / 2,
+        x: (lm[9].x + lm2[9].x) / 2,
+        y: (lm[9].y + lm2[9].y) / 2,
+        z: (lm[9].z + lm2[9].z) / 2,
       };
     }
     case 'HOLLOW_PURPLE': return lm[9]; // middle MCP = palm center
-    default: return lm[0];
+    default: return lm[9];
   }
 }
 
-export function OrbOverlay({ gesture, landmarks }) {
+export function OrbOverlay({ gesture, landmarks, headPoint }) {
   const canvasRef = useRef(null);
   const stateRef = useRef({});
 
@@ -76,7 +80,7 @@ export function OrbOverlay({ gesture, landmarks }) {
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
-    stateRef.current = { gesture: null, landmarks: null };
+    stateRef.current = { gesture: null, landmarks: null, headPoint: null };
 
     function animate() {
       animId = requestAnimationFrame(animate);
@@ -84,15 +88,17 @@ export function OrbOverlay({ gesture, landmarks }) {
       const dt = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
 
-      const { gesture, landmarks } = stateRef.current;
+      const { gesture, landmarks, headPoint } = stateRef.current;
+      // Full-screen gestures (e.g. INFINITE_VOID) are not localized orbs.
+      const orbGesture = gesture && !GESTURES[gesture]?.fullscreen ? gesture : null;
 
       // Spawn or update active orb
-      if (gesture) {
-        if (!orbSystems[gesture]) {
-          orbSystems[gesture] = new OrbParticleSystem(scene, gesture);
+      if (orbGesture) {
+        if (!orbSystems[orbGesture]) {
+          orbSystems[orbGesture] = new OrbParticleSystem(scene, orbGesture);
         }
-        const orb = orbSystems[gesture];
-        const srcLm = getOrbSourcePoint(gesture, landmarks);
+        const orb = orbSystems[orbGesture];
+        const srcLm = getOrbSourcePoint(orbGesture, landmarks, headPoint);
         if (srcLm) {
           const worldPos = landmarkToWorld(srcLm, camera);
           if (!orb.isAlive) {
@@ -105,7 +111,7 @@ export function OrbOverlay({ gesture, landmarks }) {
 
       // Fade out orbs that are no longer active
       for (const [id, orb] of Object.entries(orbSystems)) {
-        if (id !== gesture && orb.isAlive && !orb._fading) {
+        if (id !== orbGesture && orb.isAlive && !orb._fading) {
           orb.fadeOut(0.5);
         }
         if (orb._fading) orb.updateFade(dt);
@@ -127,7 +133,8 @@ export function OrbOverlay({ gesture, landmarks }) {
   useEffect(() => {
     stateRef.current.gesture = gesture;
     stateRef.current.landmarks = landmarks;
-  }, [gesture, landmarks]);
+    stateRef.current.headPoint = headPoint;
+  }, [gesture, landmarks, headPoint]);
 
   return (
     <canvas
@@ -136,6 +143,7 @@ export function OrbOverlay({ gesture, landmarks }) {
         position: 'absolute', inset: 0,
         width: '100%', height: '100%',
         pointerEvents: 'none',
+        zIndex: 6,
       }}
     />
   );

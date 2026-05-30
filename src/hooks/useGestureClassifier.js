@@ -1,100 +1,164 @@
 import { useMemo, useRef } from 'react';
 
-// Landmark indices
-const FINGER_TIPS = [4, 8, 12, 16, 20];
-const FINGER_PIPS = [3, 7, 11, 15, 19];
+// MediaPipe 21-landmark indices
+const TIPS = [4, 8, 12, 16, 20];
+const PIPS = [3, 7, 11, 15, 19];
+const WRIST = 0;
+const INDEX_MCP = 5;
+const MIDDLE_MCP = 9;
 
-function isFingerExtended(lm, fingerIdx) {
-  // fingerIdx: 0=thumb,1=index,2=middle,3=ring,4=pinky
-  if (fingerIdx === 0) {
-    // Thumb: compare tip x vs MCP x (for right hand, tip should be more left/right)
-    return Math.abs(lm[4].x - lm[2].x) > 0.04;
-  }
-  const tip = lm[FINGER_TIPS[fingerIdx]];
-  const pip = lm[FINGER_PIPS[fingerIdx]];
-  // Extended if tip y is above (less than) pip y (normalized coords, y increases down)
-  return tip.y < pip.y - 0.02;
+function dist2(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.hypot(dx, dy);
 }
 
+// Hand scale: wrist -> middle-finger MCP. Used to normalize all thresholds so
+// detection is roughly distance-from-camera independent.
+function handScale(lm) {
+  return dist2(lm[WRIST], lm[MIDDLE_MCP]) || 1e-4;
+}
+
+// Orientation-independent finger extension: a finger is extended when its tip
+// sits clearly farther from the wrist than its PIP joint. Works regardless of
+// which way the hand points (unlike a raw y-comparison).
+function fingerExtended(lm, finger) {
+  if (finger === 0) {
+    // Thumb: tip splayed away from the index MCP relative to hand size.
+    return dist2(lm[4], lm[INDEX_MCP]) > 0.75 * handScale(lm);
+  }
+  const tip = lm[TIPS[finger]];
+  const pip = lm[PIPS[finger]];
+  return dist2(lm[WRIST], tip) > dist2(lm[WRIST], pip) + 0.04 * handScale(lm);
+}
+
+// The four non-thumb fingertips bunched close together (flat-hand / chop pose).
 function fingersTogether(lm) {
-  // Check spread between index,middle,ring,pinky tips
-  const tips = [8, 12, 16, 20].map(i => lm[i]);
+  const s = handScale(lm);
+  const tips = [8, 12, 16, 20].map((i) => lm[i]);
   for (let i = 0; i < tips.length - 1; i++) {
-    const dx = tips[i].x - tips[i+1].x;
-    const dy = tips[i].y - tips[i+1].y;
-    if (Math.sqrt(dx*dx + dy*dy) > 0.06) return false;
+    if (dist2(tips[i], tips[i + 1]) > 0.45 * s) return false;
   }
   return true;
 }
 
-function palmFacingCamera(lm) {
-  // Wrist=0, indexMCP=5, pinkyMCP=17
-  // Cross product of (5-0) x (17-0) should have positive z for camera-facing
-  const w = lm[0], iMcp = lm[5], pMcp = lm[17];
-  const ax = iMcp.x - w.x, ay = iMcp.y - w.y;
-  const bx = pMcp.x - w.x, by = pMcp.y - w.y;
-  const cross = ax * by - ay * bx;
-  return cross > 0;
+function extendedFlags(lm) {
+  return [0, 1, 2, 3, 4].map((f) => fingerExtended(lm, f));
 }
 
-function classifyOneHand(lm) {
-  const extended = [0,1,2,3,4].map(i => isFingerExtended(lm, i));
-  // YUTA_VIOLET: thumb + index extended, others curled
-  if (extended[0] && extended[1] && !extended[2] && !extended[3] && !extended[4]) {
-    return 'YUTA_VIOLET';
+// Index pointing roughly horizontal (finger-gun) vs roughly vertical (pinch/up).
+function indexIsHorizontal(lm) {
+  const dx = lm[8].x - lm[INDEX_MCP].x;
+  const dy = lm[8].y - lm[INDEX_MCP].y;
+  return Math.abs(dx) > Math.abs(dy);
+}
+
+// --- single-hand static classification (no motion/latch logic) ----------------
+function classifyStatic(lm) {
+  const ext = extendedFlags(lm);
+  const s = handScale(lm);
+  const thumbIndexTouch = dist2(lm[4], lm[8]) < 0.35 * s;
+
+  const indexThumbOnly =
+    ext[1] && ext[0] && !ext[2] && !ext[3] && !ext[4];
+
+  // INFINITE_VOID: index + thumb crossed / overlapping (tips touching).
+  if (ext[1] && !ext[2] && !ext[3] && !ext[4] && thumbIndexTouch) {
+    return 'INFINITE_VOID';
   }
-  // HOLLOW_PURPLE: 4 fingers extended + together, palm facing
-  if (!extended[0] && extended[1] && extended[2] && extended[3] && extended[4]
-      && fingersTogether(lm) && palmFacingCamera(lm)) {
-    return 'HOLLOW_PURPLE';
+
+  // YUTA vs RYU: both share index+thumb extended, others curled.
+  if (indexThumbOnly && !thumbIndexTouch) {
+    return indexIsHorizontal(lm) ? 'RYU_CYAN' : 'YUTA_VIOLET';
   }
-  // RIKA_CYAN vs GOJO_RED: only index extended
-  if (!extended[0] && extended[1] && !extended[2] && !extended[3] && !extended[4]) {
-    // Pointing up (y of tip < y of wrist) vs pointing outward
-    const tipY = lm[8].y;
-    const wristY = lm[0].y;
-    if (tipY < wristY - 0.15) return 'GOJO_RED';
-    return 'RIKA_CYAN';
+
+  // GOJO_RED: thumb ONLY extended (thumbs-up), all four fingers curled.
+  if (ext[0] && !ext[1] && !ext[2] && !ext[3] && !ext[4]) {
+    return 'GOJO_RED';
   }
+
   return null;
 }
 
-export function useGestureClassifier(landmarks, handedness) {
+// Flat open hand: all four fingers extended and roughly together.
+function isFlatHand(lm) {
+  const ext = extendedFlags(lm);
+  return ext[1] && ext[2] && ext[3] && ext[4] && fingersTogether(lm);
+}
+
+// Open palm (spread): all four fingers extended (spread tolerated). Used for the
+// two-hand Gojo Blue cupping pose.
+function isOpenPalm(lm) {
+  const ext = extendedFlags(lm);
+  return ext[1] && ext[2] && ext[3] && ext[4];
+}
+
+export function useGestureClassifier(landmarks) {
   const historyRef = useRef([]);
-  const STABLE_FRAMES = 4;
+  const motionRef = useRef({ scale: null, t: 0 });
+  const latchRef = useRef({ gesture: null, until: 0 });
+  const STABLE_FRAMES = 3;
 
+  // Keyed on landmarks so it runs once per detection frame (not per render),
+  // which keeps the cross-frame motion sampling + debounce history consistent.
   return useMemo(() => {
-    if (!landmarks || landmarks.length === 0) {
-      historyRef.current = [];
-      return null;
+  if (!landmarks || landmarks.length === 0) {
+    historyRef.current = [];
+    motionRef.current.scale = null;
+    return null;
+  }
+
+  const now = performance.now();
+  let raw = null;
+
+  // 1) Two hands -> GOJO_BLUE (both open palms, held apart).
+  if (landmarks.length >= 2) {
+    const a = landmarks[0];
+    const b = landmarks[1];
+    const apart = dist2(a[WRIST], b[WRIST]) > 0.9 * handScale(a);
+    if (apart && isOpenPalm(a) && isOpenPalm(b)) {
+      raw = 'GOJO_BLUE';
     }
+  }
 
-    let gesture = null;
+  // 2) Single-hand poses + Hollow Purple motion.
+  if (!raw) {
+    const lm = landmarks[0];
 
-    if (landmarks.length >= 2) {
-      // GOJO_BLUE: both hands, fingers spread, wrists apart
-      const lm0 = landmarks[0], lm1 = landmarks[1];
-      const dx = lm0[0].x - lm1[0].x;
-      const wristDist = Math.abs(dx);
-      if (wristDist > 0.3) {
-        const allExtended0 = [1,2,3,4].every(i => isFingerExtended(lm0, i));
-        const allExtended1 = [1,2,3,4].every(i => isFingerExtended(lm1, i));
-        if (allExtended0 && allExtended1) {
-          gesture = 'GOJO_BLUE';
+    // HOLLOW_PURPLE: flat hand thrusting FORWARD (toward camera) -> hand grows.
+    if (isFlatHand(lm)) {
+      const scale = handScale(lm);
+      const m = motionRef.current;
+      if (m.scale != null) {
+        const dt = Math.max((now - m.t) / 1000, 1e-3);
+        const growthRate = (scale - m.scale) / m.scale / dt; // relative growth/sec
+        if (growthRate > 1.2) {
+          // latch so the orb has time to form + project after the flick
+          latchRef.current = { gesture: 'HOLLOW_PURPLE', until: now + 1400 };
         }
       }
+      m.scale = scale;
+      m.t = now;
+    } else {
+      motionRef.current.scale = null;
     }
 
-    if (!gesture && landmarks.length >= 1) {
-      gesture = classifyOneHand(landmarks[0]);
+    if (latchRef.current.gesture === 'HOLLOW_PURPLE' && now < latchRef.current.until) {
+      raw = 'HOLLOW_PURPLE';
+    } else {
+      raw = classifyStatic(lm);
     }
+  }
 
-    // Debounce: require stable for N frames
-    const history = historyRef.current;
-    history.push(gesture);
-    if (history.length > STABLE_FRAMES) history.shift();
+  // 3) Debounce static gestures so they don't flicker. The Hollow Purple latch
+  //    already provides persistence, so it passes the stability check quickly.
+  const history = historyRef.current;
+  history.push(raw);
+  if (history.length > STABLE_FRAMES) history.shift();
 
-    const stable = history.length === STABLE_FRAMES && history.every(g => g === gesture);
-    return stable ? gesture : (history[0] ?? null);
-  }, [landmarks, handedness]);
+  const stable =
+    history.length === STABLE_FRAMES && history.every((g) => g === raw);
+  return stable ? raw : history[0] ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [landmarks]);
 }
