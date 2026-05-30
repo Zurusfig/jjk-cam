@@ -40,10 +40,12 @@ export class OrbParticleSystem {
       seeds[i * 3 + 1] = Math.sin(phi) * Math.sin(theta);
       seeds[i * 3 + 2] = Math.cos(phi);
 
-      // Shell position [0..1]. Squaring biases particles toward the dense core
-      // so the white-hot center stacks bright under additive blending.
+      // Bimodal distribution: 65% core-biased, 35% forced into the outer shell
+      // so there's a clearly visible coloured outline ring.
       const u = Math.random();
-      radials[i] = u * u;
+      radials[i] = u < 0.65
+        ? Math.random() * Math.random() * 0.60   // dense core/mid
+        : 0.68 + Math.random() * 0.32;            // explicit outer shell
       phases[i] = Math.random() * Math.PI * 2;
 
       positions[i * 3] = seeds[i * 3];
@@ -77,6 +79,7 @@ export class OrbParticleSystem {
         uRimRadius: { value: this.config.rimRadius ?? 0.85 },
         uColorVar: { value: this.config.colorVariation ?? 0.14 },
         uOrbRadius: { value: this.config.orbRadius },
+        uAlphaScale: { value: 1.0 },
         uBehavior: { value: this.behaviorInt },
       },
       blending: THREE.AdditiveBlending,
@@ -92,8 +95,11 @@ export class OrbParticleSystem {
     this.formProgress = 0;
     this.isForming = true;
     this.isAlive = true;
+    this._fading = false;
+    this._launching = false;
     this.points.visible = true;
     this.material.uniforms.uFormProgress.value = 0;
+    this.material.uniforms.uAlphaScale.value = 1.0;
   }
 
   update(deltaTime, time, worldPos) {
@@ -115,7 +121,6 @@ export class OrbParticleSystem {
   }
 
   fadeOut(duration = 0.5) {
-    // Gradually reduce formProgress to 0 and hide
     this._fadeStart = this.formProgress;
     this._fadeDuration = duration;
     this._fading = true;
@@ -133,6 +138,35 @@ export class OrbParticleSystem {
       this.isForming = false;
       this._fading = false;
       this.points.visible = false;
+    }
+  }
+
+  // Called instead of fadeOut when the gesture is released after the orb is stable.
+  // The orb rushes toward the camera (z -> 0.82), growing huge via perspective, then vanishes.
+  launchRelease() {
+    this._launching = true;
+    this._launchProgress = 0;
+    this._launchDuration = 0.55;
+    this._launchStartZ = this.points.position.z;
+    this._launchTargetZ = 0.82; // just in front of camera at z=1; perspective makes it fill screen
+    this._fading = false;
+  }
+
+  updateLaunch(deltaTime) {
+    if (!this._launching) return;
+    this._launchProgress = Math.min(1, this._launchProgress + deltaTime / this._launchDuration);
+    // Ease-in so it starts slow then blasts forward.
+    const ease = this._launchProgress * this._launchProgress;
+    this.points.position.z = this._launchStartZ + (this._launchTargetZ - this._launchStartZ) * ease;
+    // Fade out so it dissolves as it expands across the screen.
+    this.material.uniforms.uAlphaScale.value = 1.0 - this._launchProgress;
+    if (this._launchProgress >= 1) {
+      this._launching = false;
+      this.isAlive = false;
+      this.points.visible = false;
+      // Reset z for next spawn.
+      this.points.position.z = 0;
+      this.material.uniforms.uAlphaScale.value = 1.0;
     }
   }
 

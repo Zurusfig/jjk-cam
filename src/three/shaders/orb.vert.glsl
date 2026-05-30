@@ -7,6 +7,7 @@ uniform float uCoreRadius;    // normalized radial pos where color is still whit
 uniform float uRimRadius;     // normalized radial pos where color is fully saturated
 uniform float uColorVar;      // per-particle brightness jitter amount
 uniform float uOrbRadius;
+uniform float uAlphaScale; // launch fade: 1.0 = normal, 0.0 = invisible
 uniform int uBehavior; // 0=neutral,1=repulsion,2=attraction,3=oscillate,4=directional
 
 attribute vec3 aSeed;     // random unit-sphere direction per particle, static
@@ -112,5 +113,5 @@ void main() {
 
   // Core stays near full brightness; rim fades so the edge reads as a halo.
   float layerAlpha = mix(1.0, 0.32, aRadial);
-  vAlpha = ease * layerAlpha;
+  vAlpha = ease * layerAlpha * uAlphaScale;
 }

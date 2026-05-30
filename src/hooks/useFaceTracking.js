@@ -49,7 +49,8 @@ export function useFaceTracking(videoRef, enabled = true) {
         const fh = face[10];
         const chin = face[152];
         const faceH = Math.abs(chin.y - fh.y) || 0.15;
-        setHeadPoint({ x: fh.x, y: fh.y - faceH * 0.7, z: fh.z });
+        // 0.25 sits the orb just above the forehead rather than high above the head
+        setHeadPoint({ x: fh.x, y: fh.y - faceH * 0.25, z: fh.z });
       } else {
         setHeadPoint(null);
       }

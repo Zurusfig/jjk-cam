@@ -20,21 +20,19 @@ function landmarkToWorld(lm, camera) {
 function getOrbSourcePoint(gestureId, landmarks, headPoint) {
   if (!landmarks || landmarks.length === 0) return null;
   const lm = landmarks[0];
+  // Dynamic hand height in normalised coords (used for offsets below).
+  const handH = Math.abs(lm[0].y - lm[9].y) || 0.10;
 
   switch (gestureId) {
-    case 'YUTA_VIOLET': {
-      // midpoint between thumb tip (4) and index tip (8)
-      return {
-        x: (lm[4].x + lm[8].x) / 2,
-        y: (lm[4].y + lm[8].y) / 2,
-        z: (lm[4].z + lm[8].z) / 2,
-      };
-    }
+    case 'YUTA_VIOLET':
+      // Slightly above the index fingertip.
+      return { x: lm[8].x, y: lm[8].y - handH * 0.5, z: lm[8].z };
     case 'RYU_CYAN':
-      // Spawns above the head (forehead point from face tracking). Fall back to
-      // a point well above the hand if the face isn't currently detected.
-      return headPoint ?? { x: lm[0].x, y: lm[0].y - 0.4, z: lm[0].z };
-    case 'GOJO_RED': return lm[4]; // thumb tip
+      // Forehead/above-head via FaceLandmarker. Fall back to above wrist.
+      return headPoint ?? { x: lm[0].x, y: lm[0].y - handH * 2.0, z: lm[0].z };
+    case 'GOJO_RED':
+      // Slightly above index fingertip.
+      return { x: lm[8].x, y: lm[8].y - handH * 0.4, z: lm[8].z };
     case 'GOJO_BLUE': {
       if (landmarks.length < 2) return lm[9];
       const lm2 = landmarks[1];
@@ -44,8 +42,11 @@ function getOrbSourcePoint(gestureId, landmarks, headPoint) {
         z: (lm[9].z + lm2[9].z) / 2,
       };
     }
-    case 'HOLLOW_PURPLE': return lm[9]; // middle MCP = palm center
-    default: return lm[9];
+    case 'HOLLOW_PURPLE':
+      // Above the palm (above wrist, scaled to hand size).
+      return { x: lm[9].x, y: lm[9].y - handH * 1.8, z: lm[9].z };
+    default:
+      return lm[9];
   }
 }
 
@@ -109,12 +110,18 @@ export function OrbOverlay({ gesture, landmarks, headPoint }) {
         }
       }
 
-      // Fade out orbs that are no longer active
+      // Retire orbs that are no longer the active gesture.
       for (const [id, orb] of Object.entries(orbSystems)) {
-        if (id !== orbGesture && orb.isAlive && !orb._fading) {
-          orb.fadeOut(0.5);
+        if (id !== orbGesture && orb.isAlive && !orb._fading && !orb._launching) {
+          if (orb.formProgress >= 0.95) {
+            // Orb was stable when the gesture was released: shoot it toward the camera.
+            orb.launchRelease();
+          } else {
+            orb.fadeOut(0.5);
+          }
         }
         if (orb._fading) orb.updateFade(dt);
+        if (orb._launching) orb.updateLaunch(dt);
       }
 
       renderer.render(scene, camera);
