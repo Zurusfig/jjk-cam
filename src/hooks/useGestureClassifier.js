@@ -95,7 +95,7 @@ function isOpenPalm(lm) {
 
 export function useGestureClassifier(landmarks) {
   const historyRef = useRef([]);
-  const motionRef = useRef({ scale: null, t: 0 });
+  const motionRef = useRef({ scale: null, t: 0, growth: 0 });
   const latchRef = useRef({ gesture: null, until: 0 });
   const STABLE_FRAMES = 3;
 
@@ -105,7 +105,8 @@ export function useGestureClassifier(landmarks) {
   if (!landmarks || landmarks.length === 0) {
     historyRef.current = [];
     motionRef.current.scale = null;
-    return null;
+    motionRef.current.growth = 0;
+    return { gesture: null, debug: null };
   }
 
   const now = performance.now();
@@ -131,8 +132,8 @@ export function useGestureClassifier(landmarks) {
       const m = motionRef.current;
       if (m.scale != null) {
         const dt = Math.max((now - m.t) / 1000, 1e-3);
-        const growthRate = (scale - m.scale) / m.scale / dt; // relative growth/sec
-        if (growthRate > 1.2) {
+        m.growth = (scale - m.scale) / m.scale / dt; // relative growth/sec
+        if (m.growth > 1.2) {
           // latch so the orb has time to form + project after the flick
           latchRef.current = { gesture: 'HOLLOW_PURPLE', until: now + 1400 };
         }
@@ -141,6 +142,7 @@ export function useGestureClassifier(landmarks) {
       m.t = now;
     } else {
       motionRef.current.scale = null;
+      motionRef.current.growth = 0;
     }
 
     if (latchRef.current.gesture === 'HOLLOW_PURPLE' && now < latchRef.current.until) {
@@ -158,7 +160,25 @@ export function useGestureClassifier(landmarks) {
 
   const stable =
     history.length === STABLE_FRAMES && history.every((g) => g === raw);
-  return stable ? raw : history[0] ?? null;
+  const gesture = stable ? raw : history[0] ?? null;
+
+  // Live diagnostics for tuning thresholds against a real camera.
+  const lm0 = landmarks[0];
+  const s = handScale(lm0);
+  const debug = {
+    hands: landmarks.length,
+    ext: extendedFlags(lm0),
+    scale: s,
+    indexHorizontal: indexIsHorizontal(lm0),
+    thumbIndexDist: dist2(lm0[4], lm0[8]) / s, // normalized; < 0.35 => crossed/Void
+    flat: isFlatHand(lm0),
+    openPalm: isOpenPalm(lm0),
+    growth: motionRef.current.growth, // flick velocity; > 1.2 => Hollow Purple
+    raw,
+    latched: latchRef.current.gesture === 'HOLLOW_PURPLE' && now < latchRef.current.until,
+  };
+
+  return { gesture, debug };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [landmarks]);
 }
